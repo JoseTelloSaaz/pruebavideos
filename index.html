@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Signage Player</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;600;800&family=Barlow:wght@300;400&display=swap');
+
+  :root {
+    --accent: #0ea5e9;
+    --danger: #2eda17;
+    --bg: #050505;
+    --text: #F0EDE6;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: 'Barlow', sans-serif;
+    color: var(--text);
+  }
+
+  #player {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #000;
+  }
+
+  #vid {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: contain;
+    display: none;
+  }
+
+  #yt-frame {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    border: none;
+    display: none;
+  }
+
+  #hud {
+    position: fixed;
+    bottom: 24px; right: 28px;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  #track-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px; font-weight: 300;
+    letter-spacing: .12em; text-transform: uppercase;
+    color: rgba(255,255,255,.45);
+  }
+
+  #track-counter {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 38px; font-weight: 800; line-height: 1;
+    color: rgba(255,255,255,.15);
+  }
+
+  #track-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px; font-weight: 300;
+    letter-spacing: .08em;
+    color: rgba(255,255,255,.25);
+    max-width: 260px; text-align: right;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  #progress-bar {
+    position: fixed; bottom: 0; left: 0;
+    height: 3px; width: 0%;
+    background: var(--accent);
+    z-index: 20;
+    transition: width .3s linear;
+  }
+
+  #yt-timer-bar {
+    position: fixed; bottom: 0; left: 0;
+    height: 3px; width: 0%;
+    background: var(--accent);
+    z-index: 20;
+    display: none;
+  }
+
+  /* ── ALERT OVERLAY ── */
+  #alert-overlay {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    z-index: 100;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(1.03);
+    transition: opacity .35s ease, transform .35s ease;
+  }
+
+  #alert-overlay.shown { opacity: 1; transform: scale(1); }
+
+  #alert-overlay::before {
+    content: ''; position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");
+    opacity: .4; pointer-events: none;
+  }
+
+  #alert-overlay::after {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 4px;
+    background: var(--danger);
+  }
+
+  .alert-tag {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: .25em; text-transform: uppercase;
+    color: var(--danger); border: 1px solid var(--danger);
+    padding: 4px 12px; margin-bottom: 32px; position: relative;
+    animation: blink-border 1.2s ease-in-out infinite alternate;
+  }
+
+  @keyframes blink-border {
+    from { border-color: var(--danger); color: var(--danger); }
+    to   { border-color: rgba(255,58,47,.3); color: rgba(255,58,47,.5); }
+  }
+
+  .alert-icon {
+    width: 72px; height: 72px;
+    border: 2px solid rgba(255,208,0,.3); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 28px;
+    animation: pulse-ring 2s ease-in-out infinite; position: relative;
+  }
+
+  .alert-icon svg { width: 32px; height: 32px; fill: var(--accent); }
+
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(255,208,0,.35); }
+    60%  { box-shadow: 0 0 0 18px rgba(255,208,0,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,208,0,0); }
+  }
+
+  .alert-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(28px, 4vw, 58px); font-weight: 800;
+    letter-spacing: -.01em; text-align: center; line-height: 1.05;
+    max-width: 820px; padding: 0 40px; position: relative;
+  }
+
+  .alert-title em { font-style: normal; color: var(--accent); }
+
+  .alert-meta {
+    margin-top: 22px; font-size: 13px; font-weight: 300;
+    letter-spacing: .06em; color: rgba(255,255,255,.4);
+    text-align: center; position: relative;
+  }
+
+  .alert-meta span { color: rgba(255,255,255,.65); }
+
+  .alert-countdown-bar {
+    position: absolute; bottom: 0; left: 0;
+    height: 3px; background: var(--danger); width: 100%;
+  }
+
+  /* ── LOADER ── */
+  #loader {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200; transition: opacity .6s ease;
+  }
+
+  #loader .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); margin: 0 5px;
+    animation: dot-bounce .9s ease-in-out infinite;
+  }
+  #loader .dot:nth-child(2) { animation-delay: .15s; }
+  #loader .dot:nth-child(3) { animation-delay: .3s; }
+
+  @keyframes dot-bounce {
+    0%, 80%, 100% { transform: scale(.8); opacity: .4; }
+    40%            { transform: scale(1.2); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+</div>
+
+<div id="player">
+  <video id="vid" autoplay playsinline></video>
+  <iframe id="yt-frame" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+</div>
+
+<div id="hud">
+  <div id="track-label">reproduciendo</div>
+  <div id="track-counter">1 / 1</div>
+  <div id="track-title"></div>
+</div>
+<div id="progress-bar"></div>
+<div id="yt-timer-bar"></div>
+
+<div id="alert-overlay">
+  <div class="alert-tag">● Notificación de correo</div>
+  <div class="alert-icon">
+    <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+  </div>
+  <div class="alert-title" id="alert-title">—</div>
+  <div class="alert-meta">
+    De: <span id="alert-from">—</span> &nbsp;·&nbsp; <span id="alert-ts">—</span>
+  </div>
+  <div class="alert-countdown-bar" id="countdown-bar"></div>
+</div>
+
+
+<script>
+// ╔══════════════════════════════════════════════════════════════╗
+//   CONFIGURACIÓN — EDITA AQUÍ
+// ╚══════════════════════════════════════════════════════════════╝
+const CONFIG = {
+
+  playlist: [
+
+    // ── YouTube ──
+    // duraction = duración EXACTA del video en segundos (mírala en YouTube)
+    // Ejemplos: 30seg=30 | 1min=60 | 2min=120 | 4min=240
+    /*{ type: "youtube", url: "https://www.youtube.com/watch?v=GuMvmlrGQr8", title: "Nuevo Outlook", duration: 16 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=njXOcmncBcg", title: "Nuevo Outlook", duration: 123 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=PSTSOyBccnY", title: "Nuevo Outlook", duration: 23 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=0A4mL91UVQY", title: "Nuevo Outlook", duration: 71 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=R7TNInXiqUY", title: "Nuevo Outlook", duration: 78 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=k8_ZWH-FNZk", title: "Nuevo Outlook", duration: 70 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=jUh1Jpc20lY", title: "Nuevo Outlook", duration: 96 },
+    
+    { type: "youtube", url: "https://www.youtube.com/watch?v=Kv7p3lWqP9M", title: "APP", duration: 110 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=-fJ6oOJqDTg", title: "APP", duration: 123 },
+
+    { type: "youtube", url: "https://www.youtube.com/watch?v=UlXixN0RAr0", title: "Planner", duration: 123 },
+
+    { type: "youtube", url: "https://www.youtube.com/watch?v=FK-WjbsVgB4", title: "Teams", duration: 23 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=jugBQqE_2sM", title: "Teams", duration: 151 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=DoJqHnpytUU", title: "Teams", duration: 61 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=evIBUXqeRhQ", title: "Teams", duration: 141 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=rLC2frnUasw", title: "Teams", duration: 66 },
+    { type: "youtube", url: "https://www.youtube.com/watch?v=mqQQyVlflMc", title: "Teams", duration: 50 },*/
+    { type: "youtube", url: "https://www.youtube.com/watch?v=N1gpkk-MwpY", title: "Teams", duration: 32 },
+
+    // Más ejemplos:
+    // { type: "youtube", url: "https://www.youtube.com/watch?v=XXXX", title: "Video corto",  duration: 30  },
+    // { type: "youtube", url: "https://www.youtube.com/watch?v=YYYY", title: "Video largo",  duration: 240 },
+
+    // ── MP4 local ── (los mp4 no necesitan duration, terminan solos)
+    // { type: "mp4", url: "videos/bienvenida.mp4", title: "Bienvenida" },
+    { type: "mp4", url: "migracion_ISO_37001_2025.mp4", title: "Migración ISO 37001 2025" },
+
+    // ── MP4 externo ──
+    // { type: "mp4", url: "https://example.com/video.mp4", title: "Externo" },
+    
+
+  ],
+
+  alertJsonUrl:        "bbva_alert.json",
+  alertPollSeconds:    4,
+  alertDisplaySeconds: 15,
+
+};
+// ════════════════════════════════════════════════════════════════
+
+
+// ── Extraer YouTube ID ──
+function getYouTubeId(url) {
+  const m = url.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+// ── Estado ──
+let currentIndex   = 0;
+let alertShowing   = false;
+let lastAlertId    = null;
+let countdownTimer = null;
+let ytTimer        = null;
+let loaderHidden   = false;
+
+const vid          = document.getElementById("vid");
+const ytFrame      = document.getElementById("yt-frame");
+const overlay      = document.getElementById("alert-overlay");
+const alertTitle   = document.getElementById("alert-title");
+const alertFrom    = document.getElementById("alert-from");
+const alertTs      = document.getElementById("alert-ts");
+const progressBar  = document.getElementById("progress-bar");
+const ytTimerBar   = document.getElementById("yt-timer-bar");
+const trackCounter = document.getElementById("track-counter");
+const trackLabel   = document.getElementById("track-label");
+const trackTitle   = document.getElementById("track-title");
+const countdownBar = document.getElementById("countdown-bar");
+const loader       = document.getElementById("loader");
+
+function hideLoader() {
+  if (loaderHidden) return;
+  loaderHidden = true;
+  loader.style.opacity = "0";
+  setTimeout(() => loader.style.display = "none", 700);
+}
+
+// ── Cargar item ──
+function loadItem(index) {
+  const total = CONFIG.playlist.length;
+  // módulo seguro → siempre cicla en bucle infinito
+  currentIndex = ((index % total) + total) % total;
+  const item = CONFIG.playlist[currentIndex];
+
+  trackLabel.textContent   = "reproduciendo";
+  trackCounter.textContent = `${currentIndex + 1} / ${total}`;
+  trackTitle.textContent   = item.title || "";
+  progressBar.style.width  = "0%";
+
+  clearTimeout(ytTimer);
+  ytTimerBar.style.display    = "none";
+  ytTimerBar.style.transition = "none";
+  ytTimerBar.style.width      = "0%";
+
+  if (item.type === "youtube") {
+    loadYouTube(item);
+  } else {
+    loadMp4(item);
+  }
+}
+
+// ── MP4 ──
+function loadMp4(item) {
+  ytFrame.style.display = "none";
+  ytFrame.src = "about:blank";
+  vid.style.display = "block";
+  // loop nativo solo cuando hay 1 video (con varios, el "ended" ya cicla)
+  vid.loop = CONFIG.playlist.length === 1;
+  vid.src = item.url;
+  vid.load();
+  vid.play().catch(() => {});
+}
+
+vid.addEventListener("timeupdate", () => {
+  if (!vid.duration) return;
+  progressBar.style.width = (vid.currentTime / vid.duration * 100) + "%";
+});
+
+// Al terminar un mp4 → avanza al siguiente (que puede ser el mismo si hay 1 solo,
+// pero vid.loop ya lo maneja antes de llegar aquí)
+vid.addEventListener("ended", () => loadItem(currentIndex + 1));
+vid.addEventListener("canplay", hideLoader);
+vid.addEventListener("error", () => {
+  const item = CONFIG.playlist[currentIndex];
+  if (!item || item.type === "youtube" || !vid.getAttribute("src")) return;
+  console.warn("Error mp4:", item.url);
+  setTimeout(() => loadItem(currentIndex + 1), 1500);
+});
+
+// ── YouTube ──
+function loadYouTube(item) {
+  vid.pause();
+  vid.style.display = "none";
+  vid.removeAttribute("src");
+  vid.load();
+
+  const id = getYouTubeId(item.url);
+  if (!id) {
+    console.warn("No se pudo extraer ID:", item.url);
+    setTimeout(() => loadItem(currentIndex + 1), 1000);
+    return;
+  }
+
+  const total = CONFIG.playlist.length;
+
+  if (total === 1) {
+    // Un solo video → loop nativo de YouTube, sin timer
+    const src = `https://www.youtube.com/embed/${id}?autoplay=1&loop=1&playlist=${id}&controls=0&rel=0&modestbranding=1&playsinline=1`;
+    ytFrame.style.display = "block";
+    ytFrame.src = src;
+    hideLoader();
+
+  } else {
+    // Varios videos → SIN loop (para que avance al siguiente)
+    // Timer obligatorio porque YouTube no notifica fin de video sin API key
+    const src = `https://www.youtube.com/embed/${id}?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1`;
+    ytFrame.style.display = "block";
+    ytFrame.src = src;
+    hideLoader();
+
+    // Usar la duración definida por video, con 5seg extra de margen
+    const secs = (item.duration > 0) ? item.duration + 5 : 65;
+    ytTimerBar.style.display    = "block";
+    ytTimerBar.style.transition = "none";
+    ytTimerBar.style.width      = "100%";
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      ytTimerBar.style.transition = `width ${secs}s linear`;
+      ytTimerBar.style.width      = "0%";
+    }));
+    ytTimer = setTimeout(() => loadItem(currentIndex + 1), secs * 1000);
+  }
+}
+
+// ── ALERTAS ──
+function showAlert(data) {
+  alertShowing = true;
+  const item = CONFIG.playlist[currentIndex];
+
+  if (item.type === "youtube") {
+    ytFrame.style.opacity = "0";
+    clearTimeout(ytTimer);
+  } else {
+    vid.pause();
+  }
+
+  const msg   = data.message || "Sin descripción";
+  const parts = msg.split("—");
+  alertTitle.innerHTML = parts.length > 1
+    ? `<em>${escapeHtml(parts[0].trim())}</em><br>${escapeHtml(parts.slice(1).join("—").trim())}`
+    : escapeHtml(msg);
+
+  alertFrom.textContent = data.from || "—";
+  alertTs.textContent   = formatTs(data.ts);
+
+  overlay.style.display = "flex";
+  requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("shown")));
+
+  countdownBar.style.transition = "none";
+  countdownBar.style.width = "100%";
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    countdownBar.style.transition = `width ${CONFIG.alertDisplaySeconds}s linear`;
+    countdownBar.style.width = "0%";
+  }));
+
+  clearTimeout(countdownTimer);
+  countdownTimer = setTimeout(hideAlert, CONFIG.alertDisplaySeconds * 1000);
+}
+
+function hideAlert() {
+  overlay.classList.remove("shown");
+  setTimeout(() => {
+    overlay.style.display = "none";
+    alertShowing = false;
+
+    const item  = CONFIG.playlist[currentIndex];
+    const total = CONFIG.playlist.length;
+
+    if (item.type === "youtube") {
+      ytFrame.style.opacity = "1";
+      const id = getYouTubeId(item.url);
+
+      if (total === 1) {
+        ytFrame.src = `https://www.youtube.com/embed/${id}?autoplay=1&loop=1&playlist=${id}&controls=0&rel=0&modestbranding=1&playsinline=1`;
+      } else {
+        ytFrame.src = `https://www.youtube.com/embed/${id}?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1`;
+        const secs = (item.duration > 0) ? item.duration + 5 : 65;
+        ytTimerBar.style.transition = "none";
+        ytTimerBar.style.width = "100%";
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          ytTimerBar.style.transition = `width ${secs}s linear`;
+          ytTimerBar.style.width = "0%";
+        }));
+        ytTimer = setTimeout(() => loadItem(currentIndex + 1), secs * 1000);
+      }
+    } else {
+      vid.play().catch(() => {});
+    }
+  }, 380);
+}
+
+async function pollAlert() {
+  try {
+    const res  = await fetch(`${CONFIG.alertJsonUrl}?_=${Date.now()}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.id && data.id !== lastAlertId) {
+      lastAlertId = data.id;
+      showAlert(data);
+    }
+  } catch (_) {}
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function formatTs(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("es-PE", { dateStyle:"short", timeStyle:"short" });
+  } catch(_) { return iso; }
+}
+
+// ── Init ──
+if (!CONFIG.playlist.length) {
+  loader.innerHTML = '<p style="color:#555;font-family:monospace;font-size:14px;padding:20px">Sin videos en CONFIG.playlist</p>';
+} else {
+  loadItem(0);
+  setInterval(pollAlert, CONFIG.alertPollSeconds * 1000);
+}
+</script>
+</body>
+</html>
